@@ -10,6 +10,24 @@
 - **any禁止**: `unknown`を使用
 - **非nullアサーション最小化**: 本当に必要な場合のみ `!` を使用
 
+### 日時 (Date/Time)
+- **dayjs必須**: 日時の生成・変換・比較・フォーマットは必ず `dayjs` を使用
+- **`Date`の直接操作を避ける**: `new Date()` / `Date.parse()` / `toISOString()` などの直接利用は最小化
+- **境界で文字列化**: API入出力などの境界では ISO 文字列を使い、内部ロジックは `dayjs` で扱う
+
+```typescript
+// ✅ GOOD
+import dayjs from "dayjs";
+
+const now = dayjs();
+const due = dayjs(dueAtIso);
+const isOverdue = due.isBefore(now);
+const label = due.format("YYYY-MM-DD HH:mm");
+
+// ❌ BAD
+const isOverdue = new Date(dueAtIso) < new Date();
+```
+
 ### ファイル命名
 - **ケバブケース**: `task-service.ts`, `task-list.svelte`
 - **拡張子**: TypeScript `.ts`, Svelte `.svelte`, 設定ファイル `.js`
@@ -26,24 +44,62 @@
 
 ### 1. Feature-Sliced Architecture
 
-すべての機能は以下の層に分割:
+すべての機能は以下の層に分割。シンプルな機能と複雑な機能で構造が異なる:
+
+#### シンプルな機能 (単一ドメイン)
 
 ```
-features/{feature}/
+features/tasks/
 ├── index.ts              # 公開API (型とルートのみエクスポート)
-├── domain/               # ドメイン層
-│   └── {name}.ts
-├── service/              # サービス層
+├── domain/
+│   └── task.ts           # ドメイン型・エラー・コンストラクタ
+├── service/
 │   ├── service.ts
 │   └── service.test.ts
-├── repository/           # リポジトリ層
+├── repository/
 │   └── repository.ts
-├── handler.ts            # ハンドラー層 (HTTP)
-├── validator.ts          # バリデーション
-└── .test/                # E2Eテスト
+├── handler.ts            # 単一ハンドラーファイル
+├── validator.ts          # 単一バリデーションファイル
+└── .test/
     ├── setup.ts
     └── handler.*.test.ts
 ```
+
+#### 複雑な機能 (複数サブドメイン)
+
+```
+features/attendance/
+├── index.ts                    # 公開API (すべての型とルートをエクスポート)
+├── domain/
+│   ├── stamp.ts               # Stamp エンティティ (出退勤打刻)
+│   ├── attendance.ts          # Attendance 計算ロジック
+│   └── index.ts               # barrel export
+├── service/
+│   ├── stamp-service.ts       # Stamp ビジネスロジック
+│   ├── stamp-service.test.ts
+│   ├── attendance-service.ts  # Attendance ビジネスロジック
+│   ├── attendance-service.test.ts
+│   └── index.ts               # barrel export
+├── repository/
+│   └── stamp-repository.ts    # DB操作
+├── handler/                   # 複数ハンドラー → ディレクトリ
+│   ├── stamp-handler.ts       # POST /api/stamps, GET /api/stamps/status
+│   ├── attendance-handler.ts  # GET /api/attendance
+│   └── index.ts               # barrel export
+├── validator/                 # 複数バリデーター → ディレクトリ
+│   ├── stamp-validator.ts
+│   ├── attendance-validator.ts
+│   └── index.ts               # barrel export
+└── .test/
+    ├── setup.ts
+    ├── stamp.handler.post.test.ts
+    ├── stamp.handler.status.test.ts
+    └── handler.get.test.ts
+```
+
+**使い分けの基準:**
+- **シンプルな機能**: 1つのエンティティ、単一のAPIリソース → `handler.ts`, `validator.ts`
+- **複雑な機能**: 複数のサブドメイン、関連する複数APIリソース → `handler/`, `validator/` ディレクトリ
 
 ### 2. Domain層の規約
 
